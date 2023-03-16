@@ -36,7 +36,7 @@ curl -X POST http://localhost:8080/?error=true
 ```
 
 ## How it works
-The RingBufferAppender checks for the log level and in case of DEBUG, sends it to a buffer instead of logging it, otherwise it logs it as usual.
+The FingersCrossedAppender checks for the log level and in case of DEBUG, sends it to a buffer instead of logging it, otherwise it logs it as usual.
 Whenever a log has a level higher or equal to ERROR, the buffer is flushed and the messages are logged.
 
 ## Known issues
@@ -44,4 +44,4 @@ At the moment the debug messages are not logged in the corrrect order. Not sure 
 
 ## Next steps
 This is only a initial POC and it seems to work well.
-Next steps is to make sure the RingBufferAppender can extend the FileAppender in order to write out logs.
+Next steps is to make sure the FingersCrossedAppender can extend the FileAppender in order to write out logs.

@@ -20,19 +20,16 @@ import org.apache.logging.log4j.core.config.plugins.PluginElement;
 import org.apache.logging.log4j.core.config.plugins.PluginFactory;
 
 @Plugin(
-    name = "RingBufferAppender",
+    name = "FingersCrossedAppender",
     category = Core.CATEGORY_NAME,
     elementType = Appender.ELEMENT_TYPE)
-public class RingBufferAppender extends AbstractAppender {
+public class FingersCrossedAppender extends AbstractAppender {
 
   private final String[] appenderRefs;
-
-  private List<AppenderControl> appenders;
-
+  private final List<AppenderControl> appenders;
   private final Configuration config;
 
-
-  protected RingBufferAppender(
+  protected FingersCrossedAppender(
       String[] appenderRefs,
       Configuration config,
       String name,
@@ -42,28 +39,34 @@ public class RingBufferAppender extends AbstractAppender {
     super(name, filter, null, ignoreExceptions, properties);
     this.appenderRefs = appenderRefs;
     this.config = config;
+    this.appenders = new ArrayList<>();
   }
 
   @Override
   public void start() {
-    final Map<String, Appender> map = config.getAppenders();
-    appenders = new ArrayList<>();
+    parseAppenders();
+    super.start();
+  }
 
+  private void parseAppenders() {
+    final Map<String, Appender> map = config.getAppenders();
     for (final String appenderString : appenderRefs) {
       AppenderRef appenderRef = AppenderRef.createAppenderRef(appenderString, null, null);
       final Appender appender = map.get(appenderRef.getRef());
-      if (appender != null) {
-        appenders.add(
-            new AppenderControl(appender, appenderRef.getLevel(), appenderRef.getFilter()));
-      } else {
+      if (appender == null) {
         LOGGER.error("No appender named {} was configured", appenderRef);
+        continue;
       }
+
+      appenders.add(
+          new AppenderControl(appender, appenderRef.getLevel(), appenderRef.getFilter())
+      );
     }
-    super.start();
   }
 
   @Override
   public void append(LogEvent event) {
+    //If log level is error or higher
     if (Level.ERROR.isLessSpecificThan(event.getLevel())) {
       LogEventCollector.markError();
     }
@@ -80,12 +83,18 @@ public class RingBufferAppender extends AbstractAppender {
     write(event);
   }
 
+  /**
+   * Flushes the events collected
+   */
   private void flush() {
     for (LogEvent e : LogEventCollector.events()) {
       write(e);
     }
   }
 
+  /**
+   * Writes the event to all appenders.
+   */
   private void write(LogEvent event) {
     for (final AppenderControl appender : appenders) {
       appender.callAppender(event);
@@ -93,7 +102,7 @@ public class RingBufferAppender extends AbstractAppender {
   }
 
   @PluginFactory
-  public static RingBufferAppender createAppender(
+  public static FingersCrossedAppender createAppender(
       @PluginAttribute("AppenderRef") final String appenderRefs,
       @PluginConfiguration final Configuration config,
       @PluginAttribute("name") String name,
@@ -102,11 +111,17 @@ public class RingBufferAppender extends AbstractAppender {
       @PluginElement("Properties") Property[] properties
   ) {
     if (name == null) {
-      LOGGER.error("No name provided for RingBufferAppender");
+      LOGGER.error("No name provided for FingersCrossedAppender");
       return null;
     }
 
-    return new RingBufferAppender(appenderRefs.split(","), config, name, filter, ignoreExceptions,
+    return new FingersCrossedAppender(
+        appenderRefs.split(","),
+        config,
+        name,
+        filter,
+        ignoreExceptions,
         properties);
   }
 }
+
