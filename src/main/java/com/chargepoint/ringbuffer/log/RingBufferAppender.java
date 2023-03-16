@@ -1,19 +1,23 @@
 package com.chargepoint.ringbuffer.log;
 
-import java.io.Serializable;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.core.Appender;
 import org.apache.logging.log4j.core.Core;
 import org.apache.logging.log4j.core.Filter;
-import org.apache.logging.log4j.core.Layout;
 import org.apache.logging.log4j.core.LogEvent;
 import org.apache.logging.log4j.core.appender.AbstractAppender;
+import org.apache.logging.log4j.core.config.AppenderControl;
+import org.apache.logging.log4j.core.config.AppenderRef;
+import org.apache.logging.log4j.core.config.Configuration;
 import org.apache.logging.log4j.core.config.Property;
 import org.apache.logging.log4j.core.config.plugins.Plugin;
 import org.apache.logging.log4j.core.config.plugins.PluginAttribute;
+import org.apache.logging.log4j.core.config.plugins.PluginConfiguration;
 import org.apache.logging.log4j.core.config.plugins.PluginElement;
 import org.apache.logging.log4j.core.config.plugins.PluginFactory;
-import org.apache.logging.log4j.core.layout.PatternLayout;
 
 @Plugin(
     name = "RingBufferAppender",
@@ -21,15 +25,41 @@ import org.apache.logging.log4j.core.layout.PatternLayout;
     elementType = Appender.ELEMENT_TYPE)
 public class RingBufferAppender extends AbstractAppender {
 
+  private final String[] appenderRefs;
+
+  private List<AppenderControl> appenders;
+
+  private final Configuration config;
+
 
   protected RingBufferAppender(
+      String[] appenderRefs,
+      Configuration config,
       String name,
       Filter filter,
-      Layout<? extends Serializable> layout,
       boolean ignoreExceptions,
-      Property[] properties
-  ) {
-    super(name, filter, layout, ignoreExceptions, properties);
+      Property[] properties) {
+    super(name, filter, null, ignoreExceptions, properties);
+    this.appenderRefs = appenderRefs;
+    this.config = config;
+  }
+
+  @Override
+  public void start() {
+    final Map<String, Appender> map = config.getAppenders();
+    appenders = new ArrayList<>();
+
+    for (final String appenderString : appenderRefs) {
+      AppenderRef appenderRef = AppenderRef.createAppenderRef(appenderString, null, null);
+      final Appender appender = map.get(appenderRef.getRef());
+      if (appender != null) {
+        appenders.add(
+            new AppenderControl(appender, appenderRef.getLevel(), appenderRef.getFilter()));
+      } else {
+        LOGGER.error("No appender named {} was configured", appenderRef);
+      }
+    }
+    super.start();
   }
 
   @Override
@@ -44,9 +74,10 @@ public class RingBufferAppender extends AbstractAppender {
 
     if (Level.DEBUG.isMoreSpecificThan(event.getLevel())) {
       LogEventCollector.collect(event);
-    } else {
-      write(event);
+      return;
     }
+
+    write(event);
   }
 
   private void flush() {
@@ -56,14 +87,17 @@ public class RingBufferAppender extends AbstractAppender {
   }
 
   private void write(LogEvent event) {
-    System.out.println("[" + event.getLevel() + "] " + event.getMessage().getFormattedMessage());
+    for (final AppenderControl appender : appenders) {
+      appender.callAppender(event);
+    }
   }
 
   @PluginFactory
   public static RingBufferAppender createAppender(
+      @PluginAttribute("AppenderRef") final String appenderRefs,
+      @PluginConfiguration final Configuration config,
       @PluginAttribute("name") String name,
       @PluginAttribute("ignoreExceptions") boolean ignoreExceptions,
-      @PluginElement("Layout") Layout<? extends Serializable> layout,
       @PluginElement("Filter") final Filter filter,
       @PluginElement("Properties") Property[] properties
   ) {
@@ -71,10 +105,8 @@ public class RingBufferAppender extends AbstractAppender {
       LOGGER.error("No name provided for RingBufferAppender");
       return null;
     }
-    if (layout == null) {
-      layout = PatternLayout.createDefaultLayout();
-    }
-    return new RingBufferAppender(name, filter, layout, ignoreExceptions, properties);
-  }
 
+    return new RingBufferAppender(appenderRefs.split(","), config, name, filter, ignoreExceptions,
+        properties);
+  }
 }
